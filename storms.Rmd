@@ -1,0 +1,137 @@
+---
+title: "Analysis of NOAA Storm Data"
+author: "Matt Alexander"
+date: "September 24, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis
+
+This is an analysis of NOAA storm data using data from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. 
+
+The analysis was conducted to answer these two questions: 
+
+1. Across the United States, which types of events are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+The results indicated that the events that caused the most harm to human health were **tornados**. The events that caused the most economic damage were **floods**. 
+
+
+
+## Data Processing
+The data was processed by cleaning the damage exponent factor variables so that a accurate sum of damage could be calculated. Then the data was aggregated and sorted to determine the most injurius storms and the ones that cause the most death and injury.
+
+### Relevant libraries
+```{r libraries}
+library(ggplot2)
+```
+### Downloading and importing the data 
+The data can be found at this [link.](http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) 
+```{r cars}
+url <- "http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+download.file(url, destfile="StormData.csv.bz2")
+storm_data <- read.csv("StormData.csv.bz2")
+
+```
+### Creating a Cleaner Dataset
+To answer the question of economic damage, several factors needed to be adjusted, specifically the "PROPDMGEXP" and the "CROPDMGEXP" variable names. These data are somewhat explained on page 12 of the NATIONAL WEATHER SERVICE INSTRUCTION 10-1605 document which can be found [here](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf). The factors in these variable indicate the exponents that should be applied to the "PROPDMG" and "CROPDMG" data: *"Alphabetical characters used to signify magnitude include "K" for thousands, "M" for millions, and "B" for billions."*
+
+
+```{r magnitudes_damage}
+levels(storm_data$PROPDMGEXP) <- c(levels(storm_data$PROPDMGEXP), c(1,10,100,1000,10000,100000, 1000000,10000000,100000000, 1000000000))
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == 'M'] <- 1000000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == 'm'] <- 1000000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == 'B'] <- 1000000000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == 'b'] <- 1000000000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == 'h'] <- 100
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == 'H'] <- 100
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == 'k'] <- 1000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == 'K'] <- 1000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '0'] <- 1
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '1'] <- 10
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '2'] <- 100
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '3'] <- 1000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '4'] <- 10000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '5'] <- 100000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '6'] <- 1000000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '7'] <- 10000000
+storm_data$PROPDMGEXP[storm_data$PROPDMGEXP == '8'] <- 100000000
+
+```
+Calculating the property damage by multiplying the exponent factor with the property damage field: 
+```{r}
+storm_data$PROPDMGEXP <-  as.numeric(as.character(storm_data$PROPDMGEXP))
+storm_data$PROPDMG <- (storm_data$PROPDMG) * (storm_data$PROPDMGEXP)
+
+```
+Doing the same process for the crop damage: 
+```{r}
+levels(storm_data$CROPDMGEXP) <- c(levels(storm_data$CROPDMGEXP), c(1,10,100,1000,10000,100000, 1000000,10000000,100000000, 1000000000))
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == 'M'] <- 1000000
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == 'm'] <- 1000000
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == 'B'] <- 1000000000
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == 'b'] <- 1000000000
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == 'h'] <- 100
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == 'H'] <- 100
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == 'k'] <- 1000
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == 'K'] <- 1000
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == '0'] <- 1
+storm_data$CROPDMGEXP[storm_data$CROPDMGEXP == '2'] <- 100
+
+storm_data$CROPDMGEXP1 <-  as.numeric(as.character(storm_data$CROPDMGEXP))
+storm_data$CROPDMG1 <- (storm_data$CROPDMG) * (storm_data$CROPDMGEXP1)
+
+```
+Calculating total damage -- the sum of property damage and crop damage. Then aggregating and sorting the data for the plot. 
+```{r}
+storm_data$TOTALDMG <- rowSums( cbind(storm_data$PROPDMG,storm_data$CROPDMG1), na.rm=TRUE)
+
+damage <- aggregate( TOTALDMG~EVTYPE,data = storm_data, sum)
+
+significant_damage <- subset(damage, TOTALDMG> 0)
+significant_damage <- significant_damage[order(-significant_damage$TOTALDMG),]
+top_damage <- significant_damage[1:6,]
+top_damage
+
+```
+Calculating total human injury as the sum of fatalities and injuries. Then aggregating and sorting the data for the plot. 
+
+```{r}
+storm_data$TOTALINJURY <- rowSums(cbind(storm_data$FATALITIES,storm_data$INJURIES), na.rm=TRUE)
+deaths_injury <- aggregate( TOTALINJURY~EVTYPE,data = storm_data, sum)
+significant_injuries <- subset(deaths_injury, TOTALINJURY> 0)
+significant_injuries <- significant_injuries[order(-significant_injuries$TOTALINJURY),]
+top_injuries <- significant_injuries[1:6,]
+top_injuries
+
+```
+## Results
+
+The following is a graph showing the top ten storm types categorized by the amount of economic damage caused. Flooding is clearly the most expensive storm type.
+
+```{r}
+t <- ggplot(top_damage, aes(reorder(EVTYPE, -TOTALDMG), TOTALDMG/1000000000)) +
+    geom_bar(stat="identity")+
+    labs(x="Type", y="Total Damage (billions)")+
+    labs(title="Damage Caused by Storms")
+print(t)
+
+```
+
+The following is a graph showing the top ten storm types categorized by the amount of human death or injury. Tornados are clearly the most injurious storm type.
+
+```{r plot_injuries, echo=TRUE}
+t <- ggplot(top_injuries, aes(reorder(EVTYPE, -TOTALINJURY), TOTALINJURY))+
+    geom_bar(stat="identity")+
+    
+    labs(x="Type", y="Total Fatalities and Injury")+
+    labs(title="Deaths and Injuries Caused by Storms")
+print(t)
+```
+
+
